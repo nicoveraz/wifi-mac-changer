@@ -2,7 +2,7 @@
 
 # Function to display usage information
 usage() {
-    echo "Usage: $0 -n <wifi_name> -p <wifi_password> -m <target_mac_address>"
+    echo "Usage: sudo $0 -n "YourWiFiName" -p "YourWiFiPassword" -m "00:11:22:33:44:55""
     echo "  -n    Wi-Fi network name"
     echo "  -p    Wi-Fi password"
     echo "  -m    Target MAC address (format: xx:xx:xx:xx:xx:xx or xx-xx-xx-xx-xx-xx)"
