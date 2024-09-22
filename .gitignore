@@ -1,0 +1,14 @@
+# macOS system files
+.DS_Store
+
+# Editor backup files
+*~
+
+# Compiled Python files
+*.pyc
+
+# Logs
+*.log
+
+# Environment variables
+.env
