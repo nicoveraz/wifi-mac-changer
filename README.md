@@ -4,7 +4,7 @@ This command-line tool allows you to change the MAC address of your Wi-Fi interf
 
 ## Features
 
-- Change MAC address of Wi-Fi interface
+- Change MAC address of Wi-Fi interface to a specified address or a random one
 - Remove and re-add a Wi-Fi network to preferred networks
 - Connect to the specified Wi-Fi network
 - Input validation and MAC address sanitization
@@ -18,7 +18,7 @@ This command-line tool allows you to change the MAC address of your Wi-Fi interf
 
 1. Clone this repository:
    ```
-   git clone https://github.com/nicoveraz/wifi-mac-changer.git
+   git clone https://github.com/yourusername/wifi-mac-changer.git
    cd wifi-mac-changer
    ```
 
@@ -29,20 +29,33 @@ This command-line tool allows you to change the MAC address of your Wi-Fi interf
 
 ## Usage
 
-After installation, you can use the tool with the following command:
+After installation, you can use the tool with one of the following commands:
 
+For a specific MAC address:
 ```
 sudo wifi-mac-changer -n "YourWiFiName" -p "YourWiFiPassword" -m "00:11:22:33:44:55"
 ```
 
-Replace "YourWiFiName", "YourWiFiPassword", and the MAC address with your desired values.
+For a random MAC address:
+```
+sudo wifi-mac-changer -n "YourWiFiName" -p "YourWiFiPassword" -r
+```
+
+Replace "YourWiFiName" and "YourWiFiPassword" with your actual Wi-Fi details.
 
 ### Options:
 
 - `-n`: Wi-Fi network name
 - `-p`: Wi-Fi password
 - `-m`: Target MAC address (format: xx:xx:xx:xx:xx:xx or xx-xx-xx-xx-xx-xx)
+- `-r`: Use a random MAC address
 - `-h`: Display help message
+
+To see the usage information directly from the command line, you can run:
+
+```
+wifi-mac-changer -h
+```
 
 ## Uninstallation
 

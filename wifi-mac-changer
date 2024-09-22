@@ -2,12 +2,19 @@
 
 # Function to display usage information
 usage() {
-    echo "sudo wifi-mac-changer -n \"YourWiFiName\" -p \"YourWiFiPassword\" -m \"00:11:22:33:44:55\""
+    echo "Usage: sudo wifi-mac-changer -n \"YourWiFiName\" -p \"YourWiFiPassword\" -m \"00:11:22:33:44:55\""
     echo "  -n    Wi-Fi network name"
     echo "  -p    Wi-Fi password"
     echo "  -m    Target MAC address (format: xx:xx:xx:xx:xx:xx or xx-xx-xx-xx-xx-xx)"
+    echo "  -r    Use a random MAC address"
     echo "  -h    Display this help message"
     exit 1
+}
+
+# Function to generate a random MAC address
+generate_random_mac() {
+    local mac=$(openssl rand -hex 6 | sed 's/\(..\)/\1:/g; s/.$//')
+    echo $mac
 }
 
 # Function to validate and sanitize MAC address
@@ -27,6 +34,11 @@ sanitize_mac() {
     fi
 }
 
+# Call usage function if no arguments are provided
+if [ $# -eq 0 ]; then
+    usage
+fi
+
 # Parse command line arguments
 while getopts ":n:p:m:h" opt; do
     case ${opt} in
@@ -41,6 +53,10 @@ while getopts ":n:p:m:h" opt; do
             if [ $? -ne 0 ]; then
                 exit 1
             fi
+            ;;
+        r )
+            TARGET_MAC_ADDRESS=$(generate_random_mac)
+            echo "Generated random MAC address: $TARGET_MAC_ADDRESS"
             ;;
         h )
             usage
@@ -64,13 +80,34 @@ if [ -z "${WIFI_NAME}" ] || [ -z "${WIFI_PASSWORD}" ] || [ -z "${TARGET_MAC_ADDR
 fi
 
 # Main script logic
-echo "Changing MAC address to ${TARGET_MAC_ADDRESS} and connecting to Wi-Fi ${WIFI_NAME}..."
+echo "Changing MAC address to ${TARGET_MAC_ADDRESS} and reconnecting to Wi-Fi ${WIFI_NAME}..."
+
+# Remove the network from preferred list
+echo "Removing ${WIFI_NAME} from preferred networks..."
 sudo networksetup -removepreferredwirelessnetwork en0 "${WIFI_NAME}"
+
+# Turn off Wi-Fi
+echo "Turning Wi-Fi off..."
 sudo networksetup -setairportpower en0 off
-sudo networksetup -setairportpower en0 on
+
+# Change MAC address
+echo "Changing MAC address..."
 sudo ifconfig en0 ether "${TARGET_MAC_ADDRESS}"
+
+# Turn on Wi-Fi
+echo "Turning Wi-Fi on..."
+sudo networksetup -setairportpower en0 on
+
+# Detect new hardware
+echo "Detecting new hardware..."
 sudo networksetup -detectnewhardware
+
+# Connect to the network
+echo "Connecting to ${WIFI_NAME}..."
 sudo networksetup -setairportnetwork en0 "${WIFI_NAME}" "${WIFI_PASSWORD}"
+
+# Re-add the network to preferred networks
+echo "Re-adding ${WIFI_NAME} to preferred networks..."
 sudo networksetup -addpreferredwirelessnetworkatindex en0 "${WIFI_NAME}" 0 WPA2 "${WIFI_PASSWORD}"
 
-echo "Operation completed. MAC address changed to ${TARGET_MAC_ADDRESS}, ${WIFI_NAME} removed and re-added to preferred networks, and connected."
+echo "Operation completed. MAC address changed, ${WIFI_NAME} removed and re-added to preferred networks, and connected."
