@@ -2,7 +2,7 @@
 
 # Function to display usage information
 usage() {
-    echo "Usage: sudo wifi-mac-changer -n \"YourWiFiName\" -p \"YourWiFiPassword\" -m \"00:11:22:33:44:55\""
+    echo "Usage: sudo wifi-mac-changer -n \"YourWiFiName\" -p \"YourWiFiPassword\" [-m \"00:11:22:33:44:55\" | -r]"
     echo "  -n    Wi-Fi network name"
     echo "  -p    Wi-Fi password"
     echo "  -m    Target MAC address (format: xx:xx:xx:xx:xx:xx or xx-xx-xx-xx-xx-xx)"
@@ -13,8 +13,18 @@ usage() {
 
 # Function to generate a random MAC address
 generate_random_mac() {
+    # Generate a random MAC address
     local mac=$(openssl rand -hex 6 | sed 's/\(..\)/\1:/g; s/.$//')
-    echo $mac
+    
+    # Ensure the first byte is even (locally administered address)
+    local first_byte=$(echo $mac | cut -d':' -f1)
+    local first_byte_dec=$((16#$first_byte))
+    if [ $((first_byte_dec % 2)) -ne 0 ]; then
+        first_byte_dec=$((first_byte_dec - 1))
+    fi
+    local new_first_byte=$(printf "%02x" $first_byte_dec)
+    
+    echo "${new_first_byte}${mac:2}"
 }
 
 # Function to validate and sanitize MAC address
@@ -26,7 +36,14 @@ sanitize_mac() {
     mac=${mac//-/:}
     # Check if the MAC address is in the correct format
     if [[ $mac =~ ^([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}$ ]]; then
-        echo $mac
+        # Ensure the first byte is even (locally administered address)
+        local first_byte=$(echo $mac | cut -d':' -f1)
+        local first_byte_dec=$((16#$first_byte))
+        if [ $((first_byte_dec % 2)) -ne 0 ]; then
+            first_byte_dec=$((first_byte_dec - 1))
+        fi
+        local new_first_byte=$(printf "%02x" $first_byte_dec)
+        echo "${new_first_byte}${mac:2}"
         return 0
     else
         echo "Invalid MAC address format" >&2
@@ -34,13 +51,8 @@ sanitize_mac() {
     fi
 }
 
-# Call usage function if no arguments are provided
-if [ $# -eq 0 ]; then
-    usage
-fi
-
 # Parse command line arguments
-while getopts ":n:p:m:h" opt; do
+while getopts ":n:p:m:rh" opt; do
     case ${opt} in
         n )
             WIFI_NAME=$OPTARG
@@ -55,7 +67,12 @@ while getopts ":n:p:m:h" opt; do
             fi
             ;;
         r )
-            TARGET_MAC_ADDRESS=$(generate_random_mac)
+            RANDOM_MAC=$(generate_random_mac)
+            TARGET_MAC_ADDRESS=$(sanitize_mac "$RANDOM_MAC")
+            if [ $? -ne 0 ]; then
+                echo "Error generating random MAC address" >&2
+                exit 1
+            fi
             echo "Generated random MAC address: $TARGET_MAC_ADDRESS"
             ;;
         h )
@@ -82,32 +99,32 @@ fi
 # Main script logic
 echo "Changing MAC address to ${TARGET_MAC_ADDRESS} and reconnecting to Wi-Fi ${WIFI_NAME}..."
 
-# Remove the network from preferred list
+# Step 1: Remove the network from preferred list
 echo "Removing ${WIFI_NAME} from preferred networks..."
 sudo networksetup -removepreferredwirelessnetwork en0 "${WIFI_NAME}"
 
-# Turn off Wi-Fi
+# Step 2: Turn off Wi-Fi
 echo "Turning Wi-Fi off..."
 sudo networksetup -setairportpower en0 off
 
-# Change MAC address
+# Step 3: Change MAC address
 echo "Changing MAC address..."
 sudo ifconfig en0 ether "${TARGET_MAC_ADDRESS}"
 
-# Turn on Wi-Fi
+# Step 4: Turn on Wi-Fi
 echo "Turning Wi-Fi on..."
 sudo networksetup -setairportpower en0 on
 
-# Detect new hardware
+# Step 5: Detect new hardware
 echo "Detecting new hardware..."
 sudo networksetup -detectnewhardware
 
-# Connect to the network
+# Step 6: Connect to the network
 echo "Connecting to ${WIFI_NAME}..."
 sudo networksetup -setairportnetwork en0 "${WIFI_NAME}" "${WIFI_PASSWORD}"
 
-# Re-add the network to preferred networks
+# Step 7: Re-add the network to preferred networks
 echo "Re-adding ${WIFI_NAME} to preferred networks..."
 sudo networksetup -addpreferredwirelessnetworkatindex en0 "${WIFI_NAME}" 0 WPA2 "${WIFI_PASSWORD}"
 
-echo "Operation completed. MAC address changed, ${WIFI_NAME} removed and re-added to preferred networks, and connected."
+echo "Operation completed. MAC address changed to ${TARGET_MAC_ADDRESS}, ${WIFI_NAME} removed and re-added to preferred networks, and connected."
