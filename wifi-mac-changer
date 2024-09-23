@@ -114,7 +114,14 @@ sleep $WAIT_TIME
 
 # Step 4: Change MAC address
 echo "Changing MAC address..."
-sudo ifconfig en0 ether "${TARGET_MAC_ADDRESS}"
+mac_change_output=$(sudo ifconfig en0 ether "${TARGET_MAC_ADDRESS}" 2>&1)
+if echo "$mac_change_output" | grep -q "Can't assign requested address"; then
+    echo "Debug: Unable to change MAC address. This may be due to automatic connection to another saved network."
+    echo "If possible, try removing all saved networks that are within range from your Wi-Fi settings in the GUI, then run this script again."
+    echo "Continuing with the script, but the MAC address may not have been changed."
+else
+    echo "MAC address changed successfully."
+fi
 sleep $WAIT_TIME
 
 # Step 5: Detect new hardware
