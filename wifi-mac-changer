@@ -1,10 +1,12 @@
+
 #!/bin/zsh
 
 # Function to display usage information
 usage() {
-    echo "Usage: sudo wifi-mac-changer [-m \"00:11:22:33:44:55\" | -r] [-w seconds]"
+    echo "Usage: sudo $0 [-m \"00:11:22:33:44:55\" | -r] [-n \"computername\"] [-w seconds]"
     echo "  -m    Target MAC address (format: xx:xx:xx:xx:xx:xx or xx-xx-xx-xx-xx-xx)"
     echo "  -r    Use a random MAC address"
+    echo "  -n    Set a temporary computer name for Wi-Fi (optional)"
     echo "  -w    Wait time in seconds between steps (default: 2)"
     echo "  -h    Display this help message"
     exit 1
@@ -42,9 +44,34 @@ sanitize_mac() {
     fi
 }
 
+# Function to set temporary computer name
+set_temp_computer_name() {
+    if [ ! -z "$1" ]; then
+        echo "Setting temporary computer name to $1..."
+        ORIGINAL_COMPUTER_NAME=$(scutil --get ComputerName)
+        ORIGINAL_LOCAL_HOSTNAME=$(scutil --get LocalHostName)
+        ORIGINAL_HOSTNAME=$(scutil --get HostName)
+        sudo scutil --set ComputerName "$1"
+        sudo scutil --set LocalHostName "$1"
+        sudo scutil --set HostName "$1"
+        echo "Temporary computer name set to $1."
+    fi
+}
+
+# Function to revert computer name
+revert_computer_name() {
+    if [ ! -z "$ORIGINAL_COMPUTER_NAME" ]; then
+        echo "Reverting computer name..."
+        sudo scutil --set ComputerName "$ORIGINAL_COMPUTER_NAME"
+        sudo scutil --set LocalHostName "$ORIGINAL_LOCAL_HOSTNAME"
+        sudo scutil --set HostName "$ORIGINAL_HOSTNAME"
+        echo "Computer name reverted to original."
+    fi
+}
+
 # Parse command line arguments
 WAIT_TIME=2
-while getopts ":m:rw:h" opt; do
+while getopts ":m:rn:w:h" opt; do
     case ${opt} in
         m )
             TARGET_MAC_ADDRESS=$(sanitize_mac "$OPTARG")
@@ -60,6 +87,9 @@ while getopts ":m:rw:h" opt; do
                 exit 1
             fi
             echo "Generated random MAC address: $TARGET_MAC_ADDRESS"
+            ;;
+        n )
+            TEMP_COMPUTER_NAME=$OPTARG
             ;;
         w )
             WAIT_TIME=$OPTARG
@@ -85,50 +115,40 @@ if [ -z "${TARGET_MAC_ADDRESS}" ]; then
     usage
 fi
 
-# Prompt user to disconnect from all networks and disable Auto-join
-echo "IMPORTANT: Before proceeding, please ensure you have:"
-echo "1. Disconnected from all Wi-Fi networks"
-echo "2. Disabled Auto-join for all saved networks"
-echo "3. Closed System Preferences / Network Settings"
-echo -n "Have you completed these steps? (y/n): "
-read user_confirmation
-
-if [[ ! $user_confirmation =~ ^[Yy]$ ]]; then
-    echo "Please complete the required steps and run the script again."
-    exit 1
-fi
+# Set temporary computer name if provided
+set_temp_computer_name "$TEMP_COMPUTER_NAME"
 
 # Main script logic
 echo "Changing MAC address to ${TARGET_MAC_ADDRESS}..."
 echo "Wait time between steps: ${WAIT_TIME} seconds"
 
-# Step 1: Turn off Wi-Fi
+# Turn off Wi-Fi
 echo "Turning Wi-Fi off..."
 sudo networksetup -setairportpower en0 off
 sleep $WAIT_TIME
 
-# Step 2: Turn on Wi-Fi
+# Turn on Wi-Fi
 echo "Turning Wi-Fi on..."
 sudo networksetup -setairportpower en0 on
 sleep $WAIT_TIME
 
-# Step 3: Change MAC address
+# Change MAC address
 echo "Changing MAC address..."
-mac_change_output=$(sudo ifconfig en0 ether "${TARGET_MAC_ADDRESS}" 2>&1)
-if echo "$mac_change_output" | grep -q "Can't assign requested address"; then
-    echo "Error: Unable to change MAC address. This may be due to automatic connection to a saved network."
-    echo "Please ensure you've disconnected from all networks and disabled Auto-join for all saved networks."
-    echo "Script execution stopped due to MAC address change failure."
-    exit 1
-else
-    echo "MAC address changed successfully to ${TARGET_MAC_ADDRESS}."
-fi
+sudo ifconfig en0 ether "${TARGET_MAC_ADDRESS}"
 sleep $WAIT_TIME
 
-# Step 4: Detect new hardware
-echo "Detecting new hardware..."
-sudo networksetup -detectnewhardware
-sleep $WAIT_TIME
+# Restart networking services
+echo "Restarting networking services..."
+sudo killall mDNSResponder
+sudo killall mDNSResponderHelper
+sudo dscacheutil -flushcache
 
 echo "Operation completed. MAC address changed to ${TARGET_MAC_ADDRESS}."
+if [ ! -z "$TEMP_COMPUTER_NAME" ]; then
+    echo "Temporary computer name set to $TEMP_COMPUTER_NAME."
+fi
 echo "You can now manually connect to your desired Wi-Fi network."
+echo "To revert the computer name, run this script again with the -n option omitted."
+
+# Trap to catch script exit and revert computer name
+trap revert_computer_name EXIT
