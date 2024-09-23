@@ -3,7 +3,7 @@
 
 # Function to display usage information
 usage() {
-    echo "Usage: sudo $0 [-m \"00:11:22:33:44:55\" | -r] [-n \"computername\"] [-w seconds]"
+    echo "Usage: sudo wifi-mac-changer [-m \"00:11:22:33:44:55\" | -r] [-n \"computername\"] [-w seconds]"
     echo "  -m    Target MAC address (format: xx:xx:xx:xx:xx:xx or xx-xx-xx-xx-xx-xx)"
     echo "  -r    Use a random MAC address"
     echo "  -n    Set a temporary computer name for Wi-Fi (optional)"
