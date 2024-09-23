@@ -107,14 +107,14 @@ echo "Turning Wi-Fi off..."
 sudo networksetup -setairportpower en0 off
 sleep $WAIT_TIME
 
-# Step 3: Change MAC address
-echo "Changing MAC address..."
-sudo ifconfig en0 ether "${TARGET_MAC_ADDRESS}"
-sleep $WAIT_TIME
-
-# Step 4: Turn on Wi-Fi
+# Step 3: Turn on Wi-Fi
 echo "Turning Wi-Fi on..."
 sudo networksetup -setairportpower en0 on
+sleep $WAIT_TIME
+
+# Step 4: Change MAC address
+echo "Changing MAC address..."
+sudo ifconfig en0 ether "${TARGET_MAC_ADDRESS}"
 sleep $WAIT_TIME
 
 # Step 5: Detect new hardware
@@ -125,11 +125,6 @@ sleep $WAIT_TIME
 # Step 6: Connect to the network
 echo "Connecting to ${WIFI_NAME}..."
 sudo networksetup -setairportnetwork en0 "${WIFI_NAME}" "${WIFI_PASSWORD}"
-sleep $WAIT_TIME
-
-# Step 7: Re-add the network to preferred networks
-echo "Re-adding ${WIFI_NAME} to preferred networks..."
-sudo networksetup -addpreferredwirelessnetworkatindex en0 "${WIFI_NAME}" 0 WPA2 "${WIFI_PASSWORD}"
 sleep $WAIT_TIME
 
 echo "Operation completed. MAC address changed to ${TARGET_MAC_ADDRESS}, ${WIFI_NAME} removed and re-added to preferred networks, and connected."
