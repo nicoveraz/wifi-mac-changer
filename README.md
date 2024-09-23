@@ -1,6 +1,6 @@
 # Wi-Fi MAC Changer
 
-This command-line tool allows you to change the MAC address of your Wi-Fi interface and reconnect to a specified network. It's designed for use on macOS systems. Changes are not persistent after reboot.
+This command-line tool allows you to change the MAC address of your Wi-Fi interface on macOS systems. Changes are not persistent after reboot.
 
 ## Use under your own responsibility
 
@@ -9,8 +9,6 @@ This tool is provided as-is and is intended for educational purposes only. Use i
 ## Features
 
 - Change MAC address of Wi-Fi interface to a specified address or a random one
-- Remove and re-add a Wi-Fi network to preferred networks
-- Connect to the specified Wi-Fi network
 - Input validation and MAC address sanitization
 
 ## Prerequisites
@@ -22,7 +20,7 @@ This tool is provided as-is and is intended for educational purposes only. Use i
 
 1. Clone this repository:
    ```
-   git clone https://github.com/yourusername/wifi-mac-changer.git
+   git clone https://github.com/nicoveraz/wifi-mac-changer.git
    cd wifi-mac-changer
    ```
 
@@ -33,24 +31,25 @@ This tool is provided as-is and is intended for educational purposes only. Use i
 
 ## Usage
 
+Before running the script, ensure that you:
+1. Disconnect from all Wi-Fi networks
+2. Disable Auto-join for all saved networks
+3. Close System Preferences / Network Settings
+
 After installation, you can use the tool with one of the following commands:
 
 For a specific MAC address:
 ```
-sudo wifi-mac-changer -n "YourWiFiName" -p "YourWiFiPassword" -m "00:11:22:33:44:55"
+sudo wifi-mac-changer -m "00:11:22:33:44:55"
 ```
 
 For a random MAC address:
 ```
-sudo wifi-mac-changer -n "YourWiFiName" -p "YourWiFiPassword" -r
+sudo wifi-mac-changer -r
 ```
-
-Replace "YourWiFiName" and "YourWiFiPassword" with your actual Wi-Fi details.
 
 ### Options:
 
-- `-n`: Wi-Fi network name
-- `-p`: Wi-Fi password
 - `-m`: Target MAC address (format: xx:xx:xx:xx:xx:xx or xx-xx-xx-xx-xx-xx)
 - `-r`: Use a random MAC address
 - `-w`: Wait time in seconds between steps (default: 2)
@@ -64,24 +63,11 @@ wifi-mac-changer -h
 
 ### Known Issues
 
-The log output may contain the following message:
+If you encounter an error message stating that the MAC address couldn't be changed, ensure that you've properly disconnected from all networks and disabled Auto-join for all saved networks before running the script again.
 
-```
-Changing MAC address...
-ifconfig: ioctl (SIOCAIFADDR): Can't assign requested address
-```
+## After Running the Script
 
-In some cases, if there is more than one network saved in the Wi-Fi settings that is within range, the tool may not be able to change the MAC address because the Wi-Fi interface will connect to the other network.
-
-If you encounter this message, if possible, you can try removing Auto join option for all saved networks that are within range from the Wi-Fi settings in the GUI and then rerun the script.
-
-## Uninstallation
-
-To uninstall the tool, run:
-
-```
-sudo make uninstall
-```
+After the script completes, you'll need to manually connect to your desired Wi-Fi network.
 
 ## Caution
 

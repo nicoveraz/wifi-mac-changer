@@ -2,9 +2,7 @@
 
 # Function to display usage information
 usage() {
-    echo "Usage: sudo wifi-mac-changer -n \"YourWiFiName\" -p \"YourWiFiPassword\" [-m \"00:11:22:33:44:55\" | -r] [-w seconds]"
-    echo "  -n    Wi-Fi network name"
-    echo "  -p    Wi-Fi password"
+    echo "Usage: sudo wifi-mac-changer [-m \"00:11:22:33:44:55\" | -r] [-w seconds]"
     echo "  -m    Target MAC address (format: xx:xx:xx:xx:xx:xx or xx-xx-xx-xx-xx-xx)"
     echo "  -r    Use a random MAC address"
     echo "  -w    Wait time in seconds between steps (default: 2)"
@@ -46,14 +44,8 @@ sanitize_mac() {
 
 # Parse command line arguments
 WAIT_TIME=2
-while getopts ":n:p:m:rw:h" opt; do
+while getopts ":m:rw:h" opt; do
     case ${opt} in
-        n )
-            WIFI_NAME=$OPTARG
-            ;;
-        p )
-            WIFI_PASSWORD=$OPTARG
-            ;;
         m )
             TARGET_MAC_ADDRESS=$(sanitize_mac "$OPTARG")
             if [ $? -ne 0 ]; then
@@ -87,40 +79,44 @@ while getopts ":n:p:m:rw:h" opt; do
 done
 shift $((OPTIND -1))
 
-# Check if all required arguments are provided
-if [ -z "${WIFI_NAME}" ] || [ -z "${WIFI_PASSWORD}" ] || [ -z "${TARGET_MAC_ADDRESS}" ]; then
-    echo "Error: Missing required arguments" 1>&2
+# Check if TARGET_MAC_ADDRESS is provided
+if [ -z "${TARGET_MAC_ADDRESS}" ]; then
+    echo "Error: Missing required MAC address" 1>&2
     usage
 fi
 
+# Prompt user to disconnect from all networks and disable Auto-join
+echo "IMPORTANT: Before proceeding, please ensure you have:"
+echo "1. Disconnected from all Wi-Fi networks"
+echo "2. Disabled Auto-join for all saved networks"
+echo "3. Closed System Preferences / Network Settings"
+read -p "Have you completed these steps? (y/n): " user_confirmation
+
+if [[ ! $user_confirmation =~ ^[Yy]$ ]]; then
+    echo "Please complete the required steps and run the script again."
+    exit 1
+fi
+
 # Main script logic
-echo "Changing MAC address to ${TARGET_MAC_ADDRESS} and reconnecting to Wi-Fi ${WIFI_NAME}..."
+echo "Changing MAC address to ${TARGET_MAC_ADDRESS}..."
 echo "Wait time between steps: ${WAIT_TIME} seconds"
 
-# Step 1: Remove the network from preferred list
-echo "Removing ${WIFI_NAME} from preferred networks..."
-sudo networksetup -removepreferredwirelessnetwork en0 "${WIFI_NAME}"
-sleep $WAIT_TIME
-
-# Step 2: Turn off Wi-Fi
+# Step 1: Turn off Wi-Fi
 echo "Turning Wi-Fi off..."
 sudo networksetup -setairportpower en0 off
 sleep $WAIT_TIME
 
-# Step 3: Turn on Wi-Fi
+# Step 2: Turn on Wi-Fi
 echo "Turning Wi-Fi on..."
 sudo networksetup -setairportpower en0 on
 sleep $WAIT_TIME
 
-# Step 4: Change MAC address
+# Step 3: Change MAC address
 echo "Changing MAC address..."
 mac_change_output=$(sudo ifconfig en0 ether "${TARGET_MAC_ADDRESS}" 2>&1)
 if echo "$mac_change_output" | grep -q "Can't assign requested address"; then
-    echo "Error: Unable to change MAC address. This may be due to automatic connection to another saved network."
-    echo "If that's the case and if possible, try the following steps:"
-    echo "1. Open your Wi-Fi settings in System Preferences."
-    echo "2. Remove Auto join option for all saved networks that are currently within range."
-    echo "3. Run this script again."
+    echo "Error: Unable to change MAC address. This may be due to automatic connection to a saved network."
+    echo "Please ensure you've disconnected from all networks and disabled Auto-join for all saved networks."
     echo "Script execution stopped due to MAC address change failure."
     exit 1
 else
@@ -128,14 +124,10 @@ else
 fi
 sleep $WAIT_TIME
 
-# Step 5: Detect new hardware
+# Step 4: Detect new hardware
 echo "Detecting new hardware..."
 sudo networksetup -detectnewhardware
 sleep $WAIT_TIME
 
-# Step 6: Connect to the network
-echo "Connecting to ${WIFI_NAME}..."
-sudo networksetup -setairportnetwork en0 "${WIFI_NAME}" "${WIFI_PASSWORD}"
-sleep $WAIT_TIME
-
-echo "Operation completed. MAC address changed to ${TARGET_MAC_ADDRESS}, ${WIFI_NAME} removed and re-added to preferred networks, and connected."
+echo "Operation completed. MAC address changed to ${TARGET_MAC_ADDRESS}."
+echo "You can now manually connect to your desired Wi-Fi network."
