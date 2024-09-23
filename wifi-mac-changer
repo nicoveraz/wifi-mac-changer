@@ -119,7 +119,7 @@ if echo "$mac_change_output" | grep -q "Can't assign requested address"; then
     echo "Error: Unable to change MAC address. This may be due to automatic connection to another saved network."
     echo "If that's the case and if possible, try the following steps:"
     echo "1. Open your Wi-Fi settings in System Preferences."
-    echo "2. Remove all saved networks that are currently within range."
+    echo "2. Remove Auto join option for all saved networks that are currently within range."
     echo "3. Run this script again."
     echo "Script execution stopped due to MAC address change failure."
     exit 1
