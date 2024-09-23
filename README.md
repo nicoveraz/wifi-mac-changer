@@ -11,7 +11,7 @@ This tool is provided as-is and is intended for educational purposes only. Use i
 - Change MAC address of Wi-Fi interface to a specified address or a random one
 - Temporarily change the computer name (NetBIOS name) for network connections
 - Input validation and MAC address sanitization
-- Automatic reversion of computer name changes
+- Reset option to restore the original values without reboot
 
 ## Prerequisites
 
@@ -62,6 +62,7 @@ sudo ./wifi-mac-changer -m "00:11:22:33:44:55" -n "TempComputerName"
 - `-r`: Use a random MAC address
 - `-n`: Set a temporary computer name for network connections
 - `-w`: Wait time in seconds between steps (default: 2)
+- `-R`: Reset to original MAC address and hostname
 - `-h`: Display help message
 
 To see the usage information directly from the command line, you can run:

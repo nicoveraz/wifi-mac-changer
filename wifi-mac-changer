@@ -1,25 +1,114 @@
-
 #!/bin/zsh
 
-# Function to display usage information
-usage() {
-    echo "Usage: sudo wifi-mac-changer [-m \"00:11:22:33:44:55\" | -r] [-n \"computername\"] [-w seconds]"
-    echo "  -m    Target MAC address (format: xx:xx:xx:xx:xx:xx or xx-xx-xx-xx-xx-xx)"
-    echo "  -r    Use a random MAC address"
-    echo "  -n    Set a temporary computer name for Wi-Fi (optional)"
-    echo "  -w    Wait time in seconds between steps (default: 2)"
-    echo "  -h    Display this help message"
-    exit 1
+# Enable verbose output for debugging
+set -x
+
+# Function to create temporary directory
+create_temp_dir() {
+    TEMP_DIR=$(mktemp -d /tmp/wifi_mac_hostname.XXXXXX 2>/dev/null)
+    if [ $? -ne 0 ]; then
+        echo "Failed to create temp directory with mktemp. Trying alternative method." >&2
+        TEMP_DIR="/tmp/wifi_mac_hostname"
+        mkdir -p "$TEMP_DIR"
+        if [ $? -ne 0 ]; then
+            echo "Failed to create temp directory. Exiting." >&2
+            exit 1
+        fi
+    fi
+    echo "Temporary directory created: $TEMP_DIR"
+    CONFIG_FILE="$TEMP_DIR/original_values"
 }
 
-# Function to generate a random MAC address
+# Detect Wi-Fi interface dynamically
+detect_wifi_interface() {
+    WIFI_INTERFACE=$(networksetup -listallhardwareports | awk '/Wi-Fi/{getline; print $2}')
+    if [ -z "$WIFI_INTERFACE" ]; then
+        echo "No Wi-Fi interface detected. Exiting." >&2
+        exit 1
+    fi
+}
+
+# Function to store original values
+store_original_values() {
+    echo "Storing original values..."
+    if [ ! -d "$TEMP_DIR" ]; then
+        echo "Error: Temporary directory does not exist. Creating it now." >&2
+        create_temp_dir
+    fi
+    echo "ORIGINAL_MAC=$(ifconfig "$WIFI_INTERFACE" | awk '/ether/{print $2}')" > "$CONFIG_FILE"
+    echo "ORIGINAL_HOSTNAME=$(scutil --get ComputerName)" >> "$CONFIG_FILE"
+    echo "ORIGINAL_LOCALHOSTNAME=$(scutil --get LocalHostName)" >> "$CONFIG_FILE"
+    echo "ORIGINAL_HOSTNAME_SCUTIL=$(scutil --get HostName)" >> "$CONFIG_FILE"
+    chmod 600 "$CONFIG_FILE"  # Secure the file
+    echo "Original values stored in $CONFIG_FILE"
+    cat "$CONFIG_FILE"  # Display the contents for debugging
+}
+
+# Function to load original values
+load_original_values() {
+    if [ -f "$CONFIG_FILE" ]; then
+        echo "Loading original values from $CONFIG_FILE"
+        source "$CONFIG_FILE"
+        echo "Loaded values:"
+        cat "$CONFIG_FILE"
+    else
+        echo "Error: No stored original values found at $CONFIG_FILE. Unable to reset." >&2
+        exit 1
+    fi
+}
+
+# Function to sanitize hostname
+sanitize_hostname() {
+    local name=$1
+    name=$(echo "$name" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+
+    if [ ${#name} -gt 63 ]; then
+        echo "Hostname too long. Maximum 63 characters allowed." >&2
+        return 1
+    fi
+    if [[ "$name" =~ [^a-zA-Z0-9-] ]]; then
+        echo "Invalid characters in hostname. Only alphanumeric characters and hyphens are allowed." >&2
+        return 1
+    fi
+    if [[ "$name" =~ ^- || "$name" =~ -$ ]]; then
+        echo "Hostname cannot start or end with a hyphen." >&2
+        return 1
+    fi
+    if [[ "$name" =~ ^[0-9]+$ ]]; then
+        echo "Hostname cannot be all numbers." >&2
+        return 1
+    fi
+    echo "$name"
+}
+
+# Function to set hostname
+set_hostname() {
+    if [ ! -z "$1" ]; then
+        local new_hostname=$(sanitize_hostname "$1")
+        if [ $? -ne 0 ]; then
+            echo "Invalid hostname. Skipping hostname change."
+            return 1
+        fi
+        echo "Setting hostname to $new_hostname..."
+        sudo scutil --set ComputerName "$new_hostname"
+        sudo scutil --set LocalHostName "$new_hostname"
+        sudo scutil --set HostName "$new_hostname"
+        sudo defaults write /Library/Preferences/SystemConfiguration/com.apple.smb.server NetBIOSName -string "$new_hostname"
+        sudo networksetup -setcomputername "$new_hostname"
+        echo "Hostname set to $new_hostname"
+    else
+        echo "No hostname provided. Skipping hostname change."
+    fi
+}
+
+# Function to generate a valid random MAC address
 generate_random_mac() {
     local mac=$(openssl rand -hex 6 | sed 's/\(..\)/\1:/g; s/.$//')
     local first_byte=$(echo $mac | cut -d':' -f1)
     local first_byte_dec=$((16#$first_byte))
-    if [ $((first_byte_dec % 2)) -ne 0 ]; then
-        first_byte_dec=$((first_byte_dec - 1))
-    fi
+    
+    # Ensure it's unicast and globally unique
+    first_byte_dec=$((first_byte_dec & 254))
     local new_first_byte=$(printf "%02x" $first_byte_dec)
     echo "${new_first_byte}${mac:2}"
 }
@@ -33,7 +122,7 @@ sanitize_mac() {
         local first_byte=$(echo $mac | cut -d':' -f1)
         local first_byte_dec=$((16#$first_byte))
         if [ $((first_byte_dec % 2)) -ne 0 ]; then
-            first_byte_dec=$((first_byte_dec - 1))
+            first_byte_dec=$((first_byte_dec & 254))
         fi
         local new_first_byte=$(printf "%02x" $first_byte_dec)
         echo "${new_first_byte}${mac:2}"
@@ -44,35 +133,57 @@ sanitize_mac() {
     fi
 }
 
-# Function to set temporary computer name
-set_temp_computer_name() {
-    if [ ! -z "$1" ]; then
-        echo "Setting temporary computer name to $1..."
-        ORIGINAL_COMPUTER_NAME=$(scutil --get ComputerName)
-        ORIGINAL_LOCAL_HOSTNAME=$(scutil --get LocalHostName)
-        ORIGINAL_HOSTNAME=$(scutil --get HostName)
-        sudo scutil --set ComputerName "$1"
-        sudo scutil --set LocalHostName "$1"
-        sudo scutil --set HostName "$1"
-        echo "Temporary computer name set to $1."
+# Function to reset configuration
+reset_config() {
+    echo "Resetting to original configuration..."
+    load_original_values
+
+    sudo scutil --set ComputerName "$ORIGINAL_HOSTNAME"
+    sudo scutil --set LocalHostName "$ORIGINAL_LOCALHOSTNAME"
+    if [ ! -z "$ORIGINAL_HOSTNAME_SCUTIL" ]; then
+        sudo scutil --set HostName "$ORIGINAL_HOSTNAME_SCUTIL"
+    else
+        sudo scutil --set HostName "$ORIGINAL_HOSTNAME"
+    fi
+    sudo defaults write /Library/Preferences/SystemConfiguration/com.apple.smb.server NetBIOSName -string "$ORIGINAL_HOSTNAME"
+    sudo networksetup -setcomputername "$ORIGINAL_HOSTNAME"
+
+    sudo networksetup -setairportpower "$WIFI_INTERFACE" off
+    sleep 2
+    sudo ifconfig "$WIFI_INTERFACE" ether "$ORIGINAL_MAC"
+    sudo networksetup -setairportpower "$WIFI_INTERFACE" on
+    sleep 2
+    sudo ipconfig set "$WIFI_INTERFACE" DHCP
+
+    # Cleanup temporary directory
+    cleanup
+    echo "Cleanup completed."
+    echo "Reset completed. Original hostname: $ORIGINAL_HOSTNAME, Original MAC: $ORIGINAL_MAC"
+}
+
+# Cleanup function
+cleanup() {
+    if [ -d "$TEMP_DIR" ]; then
+        echo "Cleaning up temporary directory: $TEMP_DIR"
+        rm -rf "$TEMP_DIR"
+    else
+        echo "No temporary directory found at $TEMP_DIR"
     fi
 }
 
-# Function to revert computer name
-revert_computer_name() {
-    if [ ! -z "$ORIGINAL_COMPUTER_NAME" ]; then
-        echo "Reverting computer name..."
-        sudo scutil --set ComputerName "$ORIGINAL_COMPUTER_NAME"
-        sudo scutil --set LocalHostName "$ORIGINAL_LOCAL_HOSTNAME"
-        sudo scutil --set HostName "$ORIGINAL_HOSTNAME"
-        echo "Computer name reverted to original."
-    fi
-}
+# Main flow - detect Wi-Fi interface, create temp dir, and store original values
+detect_wifi_interface
+create_temp_dir
+store_original_values
 
 # Parse command line arguments
 WAIT_TIME=2
-while getopts ":m:rn:w:h" opt; do
+RESET=false
+while getopts ":n:m:rw:Rh" opt; do
     case ${opt} in
+        n )
+            HOSTNAME=$OPTARG
+            ;;
         m )
             TARGET_MAC_ADDRESS=$(sanitize_mac "$OPTARG")
             if [ $? -ne 0 ]; then
@@ -88,11 +199,11 @@ while getopts ":m:rn:w:h" opt; do
             fi
             echo "Generated random MAC address: $TARGET_MAC_ADDRESS"
             ;;
-        n )
-            TEMP_COMPUTER_NAME=$OPTARG
-            ;;
         w )
             WAIT_TIME=$OPTARG
+            ;;
+        R )
+            RESET=true
             ;;
         h )
             usage
@@ -109,46 +220,36 @@ while getopts ":m:rn:w:h" opt; do
 done
 shift $((OPTIND -1))
 
-# Check if TARGET_MAC_ADDRESS is provided
-if [ -z "${TARGET_MAC_ADDRESS}" ]; then
-    echo "Error: Missing required MAC address" 1>&2
-    usage
+# Reset configuration if requested
+if [ "$RESET" = true ]; then
+    reset_config
+    exit 0
 fi
 
-# Set temporary computer name if provided
-set_temp_computer_name "$TEMP_COMPUTER_NAME"
-
-# Main script logic
-echo "Changing MAC address to ${TARGET_MAC_ADDRESS}..."
-echo "Wait time between steps: ${WAIT_TIME} seconds"
-
-# Turn off Wi-Fi
-echo "Turning Wi-Fi off..."
-sudo networksetup -setairportpower en0 off
-sleep $WAIT_TIME
-
-# Turn on Wi-Fi
-echo "Turning Wi-Fi on..."
-sudo networksetup -setairportpower en0 on
-sleep $WAIT_TIME
-
-# Change MAC address
-echo "Changing MAC address..."
-sudo ifconfig en0 ether "${TARGET_MAC_ADDRESS}"
-sleep $WAIT_TIME
-
-# Restart networking services
-echo "Restarting networking services..."
-sudo killall mDNSResponder
-sudo killall mDNSResponderHelper
-sudo dscacheutil -flushcache
-
-echo "Operation completed. MAC address changed to ${TARGET_MAC_ADDRESS}."
-if [ ! -z "$TEMP_COMPUTER_NAME" ]; then
-    echo "Temporary computer name set to $TEMP_COMPUTER_NAME."
+# Set hostname if provided
+if [ ! -z "$HOSTNAME" ]; then
+    set_hostname "$HOSTNAME"
 fi
-echo "You can now manually connect to your desired Wi-Fi network."
-echo "To revert the computer name, run this script again with the -n option omitted."
 
-# Trap to catch script exit and revert computer name
-trap revert_computer_name EXIT
+# Change MAC address and renew DHCP lease if a MAC address is provided
+if [ ! -z "$TARGET_MAC_ADDRESS" ]; then
+    echo "Changing MAC address to ${TARGET_MAC_ADDRESS}..."
+    echo "Wait time between steps: ${WAIT_TIME} seconds"
+    
+    # Turn off Wi-Fi
+    sudo networksetup -setairportpower "$WIFI_INTERFACE" off
+    sleep $WAIT_TIME
+    
+    # Change MAC address
+    sudo ifconfig "$WIFI_INTERFACE" ether "${TARGET_MAC_ADDRESS}"
+    sleep $WAIT_TIME
+    
+    # Turn on Wi-Fi and renew DHCP lease
+    sudo networksetup -setairportpower "$WIFI_INTERFACE" on
+    sleep $WAIT_TIME
+    sudo ipconfig set "$WIFI_INTERFACE" DHCP
+    
+    echo "MAC address changed to ${TARGET_MAC_ADDRESS}"
+fi
+
+exit 0
