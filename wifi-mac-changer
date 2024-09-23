@@ -3,6 +3,15 @@
 # Enable verbose output for debugging
 set -x
 
+# Detect Wi-Fi interface dynamically
+detect_wifi_interface() {
+    WIFI_INTERFACE=$(networksetup -listallhardwareports | awk '/Wi-Fi/{getline; print $2}')
+    if [ -z "$WIFI_INTERFACE" ]; then
+        echo "No Wi-Fi interface detected. Exiting." >&2
+        exit 1
+    fi
+}
+
 # Function to create temporary directory
 create_temp_dir() {
     TEMP_DIR=$(mktemp -d /tmp/wifi_mac_hostname.XXXXXX 2>/dev/null)
@@ -17,15 +26,6 @@ create_temp_dir() {
     fi
     echo "Temporary directory created: $TEMP_DIR"
     CONFIG_FILE="$TEMP_DIR/original_values"
-}
-
-# Detect Wi-Fi interface dynamically
-detect_wifi_interface() {
-    WIFI_INTERFACE=$(networksetup -listallhardwareports | awk '/Wi-Fi/{getline; print $2}')
-    if [ -z "$WIFI_INTERFACE" ]; then
-        echo "No Wi-Fi interface detected. Exiting." >&2
-        exit 1
-    fi
 }
 
 # Function to store original values
@@ -43,6 +43,11 @@ store_original_values() {
     echo "Original values stored in $CONFIG_FILE"
     cat "$CONFIG_FILE"  # Display the contents for debugging
 }
+
+# Main flow - detect Wi-Fi interface, create temp dir, and store original values
+detect_wifi_interface
+create_temp_dir
+store_original_values
 
 # Function to load original values
 load_original_values() {
@@ -170,11 +175,6 @@ cleanup() {
         echo "No temporary directory found at $TEMP_DIR"
     fi
 }
-
-# Main flow - detect Wi-Fi interface, create temp dir, and store original values
-detect_wifi_interface
-create_temp_dir
-store_original_values
 
 # Parse command line arguments
 WAIT_TIME=2
