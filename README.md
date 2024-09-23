@@ -73,7 +73,7 @@ ifconfig: ioctl (SIOCAIFADDR): Can't assign requested address
 
 In some cases, if there is more than one network saved in the Wi-Fi settings that is within range, the tool may not be able to change the MAC address because the Wi-Fi interface will connect to the other network.
 
-If you encounter this message, if possible, you can try removing all saved networks that are within range from the Wi-Fi settings in the GUI and then rerun the script.
+If you encounter this message, if possible, you can try removing auto connection for all saved networks that are within range from the Wi-Fi settings in the GUI and then rerun the script.
 
 ## Uninstallation
 
