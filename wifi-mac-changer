@@ -90,7 +90,8 @@ echo "IMPORTANT: Before proceeding, please ensure you have:"
 echo "1. Disconnected from all Wi-Fi networks"
 echo "2. Disabled Auto-join for all saved networks"
 echo "3. Closed System Preferences / Network Settings"
-read -p "Have you completed these steps? (y/n): " user_confirmation
+echo -n "Have you completed these steps? (y/n): "
+read user_confirmation
 
 if [[ ! $user_confirmation =~ ^[Yy]$ ]]; then
     echo "Please complete the required steps and run the script again."
