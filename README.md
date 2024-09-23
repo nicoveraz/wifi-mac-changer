@@ -49,6 +49,7 @@ Replace "YourWiFiName" and "YourWiFiPassword" with your actual Wi-Fi details.
 - `-p`: Wi-Fi password
 - `-m`: Target MAC address (format: xx:xx:xx:xx:xx:xx or xx-xx-xx-xx-xx-xx)
 - `-r`: Use a random MAC address
+- `-w`: Wait time in seconds between steps (default: 2)
 - `-h`: Display help message
 
 To see the usage information directly from the command line, you can run:

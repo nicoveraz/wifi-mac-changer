@@ -2,41 +2,34 @@
 
 # Function to display usage information
 usage() {
-    echo "Usage: sudo wifi-mac-changer -n \"YourWiFiName\" -p \"YourWiFiPassword\" [-m \"00:11:22:33:44:55\" | -r]"
+    echo "Usage: sudo wifi-mac-changer -n \"YourWiFiName\" -p \"YourWiFiPassword\" [-m \"00:11:22:33:44:55\" | -r] [-w seconds]"
     echo "  -n    Wi-Fi network name"
     echo "  -p    Wi-Fi password"
     echo "  -m    Target MAC address (format: xx:xx:xx:xx:xx:xx or xx-xx-xx-xx-xx-xx)"
     echo "  -r    Use a random MAC address"
+    echo "  -w    Wait time in seconds between steps (default: 2)"
     echo "  -h    Display this help message"
     exit 1
 }
 
 # Function to generate a random MAC address
 generate_random_mac() {
-    # Generate a random MAC address
     local mac=$(openssl rand -hex 6 | sed 's/\(..\)/\1:/g; s/.$//')
-    
-    # Ensure the first byte is even (locally administered address)
     local first_byte=$(echo $mac | cut -d':' -f1)
     local first_byte_dec=$((16#$first_byte))
     if [ $((first_byte_dec % 2)) -ne 0 ]; then
         first_byte_dec=$((first_byte_dec - 1))
     fi
     local new_first_byte=$(printf "%02x" $first_byte_dec)
-    
     echo "${new_first_byte}${mac:2}"
 }
 
 # Function to validate and sanitize MAC address
 sanitize_mac() {
     local mac=$1
-    # Remove any characters that aren't hexadecimal digits or colons/hyphens
     mac=$(echo $mac | tr -cd '[:xdigit:]:-')
-    # Replace hyphens with colons
     mac=${mac//-/:}
-    # Check if the MAC address is in the correct format
     if [[ $mac =~ ^([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}$ ]]; then
-        # Ensure the first byte is even (locally administered address)
         local first_byte=$(echo $mac | cut -d':' -f1)
         local first_byte_dec=$((16#$first_byte))
         if [ $((first_byte_dec % 2)) -ne 0 ]; then
@@ -52,7 +45,8 @@ sanitize_mac() {
 }
 
 # Parse command line arguments
-while getopts ":n:p:m:rh" opt; do
+WAIT_TIME=2
+while getopts ":n:p:m:rw:h" opt; do
     case ${opt} in
         n )
             WIFI_NAME=$OPTARG
@@ -74,6 +68,9 @@ while getopts ":n:p:m:rh" opt; do
                 exit 1
             fi
             echo "Generated random MAC address: $TARGET_MAC_ADDRESS"
+            ;;
+        w )
+            WAIT_TIME=$OPTARG
             ;;
         h )
             usage
@@ -98,33 +95,41 @@ fi
 
 # Main script logic
 echo "Changing MAC address to ${TARGET_MAC_ADDRESS} and reconnecting to Wi-Fi ${WIFI_NAME}..."
+echo "Wait time between steps: ${WAIT_TIME} seconds"
 
 # Step 1: Remove the network from preferred list
 echo "Removing ${WIFI_NAME} from preferred networks..."
 sudo networksetup -removepreferredwirelessnetwork en0 "${WIFI_NAME}"
+sleep $WAIT_TIME
 
 # Step 2: Turn off Wi-Fi
 echo "Turning Wi-Fi off..."
 sudo networksetup -setairportpower en0 off
+sleep $WAIT_TIME
 
 # Step 3: Change MAC address
 echo "Changing MAC address..."
 sudo ifconfig en0 ether "${TARGET_MAC_ADDRESS}"
+sleep $WAIT_TIME
 
 # Step 4: Turn on Wi-Fi
 echo "Turning Wi-Fi on..."
 sudo networksetup -setairportpower en0 on
+sleep $WAIT_TIME
 
 # Step 5: Detect new hardware
 echo "Detecting new hardware..."
 sudo networksetup -detectnewhardware
+sleep $WAIT_TIME
 
 # Step 6: Connect to the network
 echo "Connecting to ${WIFI_NAME}..."
 sudo networksetup -setairportnetwork en0 "${WIFI_NAME}" "${WIFI_PASSWORD}"
+sleep $WAIT_TIME
 
 # Step 7: Re-add the network to preferred networks
 echo "Re-adding ${WIFI_NAME} to preferred networks..."
 sudo networksetup -addpreferredwirelessnetworkatindex en0 "${WIFI_NAME}" 0 WPA2 "${WIFI_PASSWORD}"
+sleep $WAIT_TIME
 
 echo "Operation completed. MAC address changed to ${TARGET_MAC_ADDRESS}, ${WIFI_NAME} removed and re-added to preferred networks, and connected."
