@@ -1,6 +1,6 @@
 # Wi-Fi MAC Changer
 
-This command-line tool allows you to change the MAC address of your Wi-Fi interface and reconnect to a specified network. It's designed for use on macOS systems.
+This command-line tool allows you to change the MAC address of your Wi-Fi interface and reconnect to a specified network. It's designed for use on macOS systems. Changes are not persistent after reboot.
 
 ## Use under your own responsibility
 
