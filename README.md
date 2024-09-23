@@ -2,6 +2,10 @@
 
 This command-line tool allows you to change the MAC address of your Wi-Fi interface and reconnect to a specified network. It's designed for use on macOS systems.
 
+## Use under your own responsibility
+
+This tool is provided as-is and is intended for educational purposes only. Use it at your own risk. The author is not responsible for any misuse or damage caused by this tool.
+
 ## Features
 
 - Change MAC address of Wi-Fi interface to a specified address or a random one
@@ -57,6 +61,19 @@ To see the usage information directly from the command line, you can run:
 ```
 wifi-mac-changer -h
 ```
+
+### Known Issues
+
+The log output may contain the following message:
+
+```
+Changing MAC address...
+ifconfig: ioctl (SIOCAIFADDR): Can't assign requested address
+```
+
+In some cases, if there is more than one network saved in the Wi-Fi settings that is within range, the tool may not be able to change the MAC address because the Wi-Fi interface will connect to the other network.
+
+If you encounter this message, if possible, you can try removing all saved networks that are within range from the Wi-Fi settings in the GUI and then rerun the script.
 
 ## Uninstallation
 
