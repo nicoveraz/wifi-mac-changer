@@ -151,6 +151,8 @@ reset_config() {
     echo "Resetting to original configuration..."
     load_original_values
 
+    local reset_error=false
+
     sudo scutil --set ComputerName "$ORIGINAL_HOSTNAME"
     sudo scutil --set LocalHostName "$ORIGINAL_LOCALHOSTNAME"
     if [ ! -z "$ORIGINAL_HOSTNAME_SCUTIL" ]; then
@@ -163,20 +165,31 @@ reset_config() {
 
     sudo networksetup -setairportpower "$WIFI_INTERFACE" off
     sleep 2
-    sudo ifconfig "$WIFI_INTERFACE" ether "$ORIGINAL_MAC"
-    sudo networksetup -setairportpower "$WIFI_INTERFACE" on
-    sleep 2
-    sudo ipconfig set "$WIFI_INTERFACE" DHCP
+    if ! sudo ifconfig "$WIFI_INTERFACE" ether "$ORIGINAL_MAC"; then
+        echo "Error: Failed to reset MAC address. Original MAC address may no longer be valid." >&2
+        reset_error=true
+    else
+        sudo networksetup -setairportpower "$WIFI_INTERFACE" on
+        sleep 2
+        sudo ipconfig set "$WIFI_INTERFACE" DHCP
+    fi
 
-    echo "Reset completed. Original hostname: $ORIGINAL_HOSTNAME, Original MAC: $ORIGINAL_MAC"
+    if [ "$reset_error" = true ]; then
+        echo "Reset completed with errors. The configuration file will be preserved." >&2
+        RESET=false  # Prevent cleanup of the config file
+    else
+        echo "Reset completed successfully. Original hostname: $ORIGINAL_HOSTNAME, Original MAC: $ORIGINAL_MAC"
+    fi
 }
 
 # Cleanup function
 cleanup() {
     if [ "$RESET" = true ] && [ -f "$CONFIG_FILE" ]; then
-        echo "Cleaning up configuration file after reset: $CONFIG_FILE"
+        echo "Cleaning up configuration file after successful reset: $CONFIG_FILE"
         rm -f "$CONFIG_FILE"
         rmdir "$(dirname "$CONFIG_FILE")" 2>/dev/null  # Remove directory if empty
+    elif [ "$RESET" = true ]; then
+        echo "Reset was requested but configuration file not found or reset encountered errors. No cleanup performed."
     fi
 }
 
@@ -235,7 +248,7 @@ if [ "$RESET" = true ]; then
     # If resetting, load the original values and perform reset
     load_original_values
     reset_config
-    echo "Reset completed. Cleaning up..."
+    echo "Reset process completed."
     cleanup
     exit 0
 else
