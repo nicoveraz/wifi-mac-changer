@@ -1,6 +1,6 @@
 # Wi-Fi MAC Changer
 
-This command-line tool allows you to change the MAC address of your Wi-Fi interface on macOS systems. Changes are not persistent after reboot.
+This command-line tool allows you to change the MAC address of your Wi-Fi interface on macOS systems.
 
 ## Use under your own responsibility
 
@@ -9,7 +9,7 @@ This tool is provided as-is and is intended for educational purposes only. Use i
 ## Features
 
 - Change MAC address of Wi-Fi interface to a specified address or a random one
-- Temporarily change the computer name (NetBIOS name) for network connections
+- Change the computer name (NetBIOS name) for network connections
 - Input validation and MAC address sanitization
 - Reset option to restore the original values without reboot
 
@@ -71,9 +71,11 @@ To see the usage information directly from the command line, you can run:
 wifi-mac-changer -h
 ```
 
-### Known Issues
+### Caveats
 
-If you encounter an error message stating that the MAC address couldn't be changed, ensure that you've properly disconnected from all networks and disabled Auto-join for all saved networks before running the script again.
+- The script requires administrator privileges to run
+- MAC changes are reverted upon system reboot or when the script is run with the -R option
+- Hostname change is persistent until the script is run again with the -R option
 
 ## After Running the Script
 
