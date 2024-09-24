@@ -1,11 +1,41 @@
 #!/bin/zsh
 
+# Function to check for sudo privileges
+check_sudo() {
+    if [ "$EUID" -ne 0 ]; then
+        echo "This script requires sudo privileges to run."
+        if sudo -v; then
+            echo "Sudo access granted."
+        else
+            echo "Failed to obtain sudo privileges. Exiting."
+            exit 1
+        fi
+    fi
+}
+
+# Function to prompt user about Auto-Join
+prompt_auto_join() {
+    echo "IMPORTANT: Before proceeding, please turn off Auto-Join for all preferred Wi-Fi networks."
+    echo "This ensures the script can properly manage network connections."
+    echo "To do this:"
+    echo "1. Go to System Preferences > Network > Wi-Fi > Advanced"
+    echo "2. Uncheck 'Auto-join' for all networks in the preferred networks list"
+    echo ""
+    read -p "Have you turned off Auto-Join for all preferred networks? (y/n): " response
+    if [[ ! $response =~ ^[Yy]$ ]]; then
+        echo "Please turn off Auto-Join and run the script again. Exiting."
+        exit 1
+    fi
+}
+
 # Usage function
 usage() {
     cat << EOF
-Usage: wifi-mac-changer [options]
+Usage: sudo wifi-mac-changer [options]
 
 This script allows you to change the Wi-Fi MAC address and hostname of your Mac.
+
+Before running, please turn off Auto-Join for all preferred Wi-Fi networks.
 
 Options:
   -n <hostname>   Set a new hostname
@@ -16,16 +46,16 @@ Options:
   -h              Display this help message
 
 Examples:
-  wifi-mac-changer -n "NewMacBook" -r
+  sudo wifi-mac-changer -n "NewMacBook" -r
     Change hostname to "NewMacBook" and set a random MAC address
 
-  wifi-mac-changer -m 00:11:22:33:44:55 -w 5
+  sudo wifi-mac-changer -m 00:11:22:33:44:55 -w 5
     Set MAC address to 00:11:22:33:44:55 with a 5-second wait time
 
-  wifi-mac-changer -R
+  sudo wifi-mac-changer -R
     Reset to original MAC address and hostname
 
-Note: This script requires sudo privileges to make system changes.
+Note: This script requires sudo privileges to make system changes. Auto-Join should be turned off for all preferred Wi-Fi networks available
 EOF
     exit 1
 }
@@ -196,6 +226,10 @@ cleanup() {
 # Set trap for cleanup
 trap cleanup EXIT
 
+# Main flow
+check_sudo
+prompt_auto_join
+
 # Parse command line arguments
 WAIT_TIME=2
 RESET=false
@@ -240,7 +274,6 @@ while getopts ":n:m:rw:Rh" opt; do
 done
 shift $((OPTIND -1))
 
-# Main flow
 detect_wifi_interface
 find_or_create_config
 
