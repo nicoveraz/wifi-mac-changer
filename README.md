@@ -36,7 +36,6 @@ This tool is provided as-is and is intended for educational purposes only. Use i
 Before running the script, ensure that you:
 1. Disconnect from all Wi-Fi networks
 2. Disable Auto-join for all saved networks
-3. Close System Preferences / Network Settings
 
 After installation, you can use the tool with one of the following commands:
 
@@ -56,6 +55,8 @@ To also set a temporary computer name:
 sudo ./wifi-mac-changer -m "00:11:22:33:44:55" -n "TempComputerName"
 ```
 
+After running the script, you have to reconnect to the Wi-Fi network manually
+
 ### Options:
 
 - `-m`: Target MAC address (format: xx:xx:xx:xx:xx:xx or xx-xx-xx-xx-xx-xx)
@@ -71,24 +72,10 @@ To see the usage information directly from the command line, you can run:
 wifi-mac-changer -h
 ```
 
-### Caveats
+## Reverting Changes
 
-- The script requires administrator privileges to run
-- MAC changes are reverted upon system reboot or when the script is run with the -R option
-- Hostname change is persistent until the script is run again with the -R option
-
-## After Running the Script
-
-### After the script completes:
-
-You'll need to manually connect to your desired Wi-Fi network.
-The MAC address change will persist until the next reboot.
-If you set a temporary computer name, it will persist until you run the script again without the -n option or until you reboot.
-
-### Reverting Changes
-
-The MAC address change is automatically reverted upon system reboot.
-The temporary computer name is automatically reverted when the script exits or when you run the script again without the -n option.
+- The MAC address change is automatically reverted upon system reboot or when the script is run with the -R option
+- Hostname change will persist after reboot, to reset it to default value run with the -R option
 
 ## Caution
 
