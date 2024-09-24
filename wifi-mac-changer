@@ -196,15 +196,28 @@ reset_config() {
     sudo defaults write /Library/Preferences/SystemConfiguration/com.apple.smb.server NetBIOSName -string "$ORIGINAL_HOSTNAME"
     sudo networksetup -setcomputername "$ORIGINAL_HOSTNAME"
 
-    sudo networksetup -setairportpower "$WIFI_INTERFACE" off
-    sleep 2
-    if ! sudo ifconfig "$WIFI_INTERFACE" ether "$ORIGINAL_MAC"; then
-        echo "Error: Failed to reset MAC address. Original MAC address may no longer be valid." >&2
+    # Reset MAC address
+    if ! sudo networksetup -setairportpower "$WIFI_INTERFACE" off; then
+        echo "Error: Failed to turn off Wi-Fi" >&2
         reset_error=true
     else
-        sudo networksetup -setairportpower "$WIFI_INTERFACE" on
         sleep 2
-        sudo ipconfig set "$WIFI_INTERFACE" DHCP
+        if ! sudo networksetup -setairportpower "$WIFI_INTERFACE" on; then
+            echo "Error: Failed to turn on Wi-Fi" >&2
+            reset_error=true
+        else
+            sleep 2
+            if ! sudo ifconfig "$WIFI_INTERFACE" ether "$ORIGINAL_MAC"; then
+                echo "Error: Failed to reset MAC address. Original MAC address may no longer be valid." >&2
+                reset_error=true
+            else
+                sleep 2
+                if ! sudo ipconfig set "$WIFI_INTERFACE" DHCP; then
+                    echo "Error: Failed to renew DHCP lease" >&2
+                    reset_error=true
+                fi
+            fi
+        fi
     fi
 
     if [ "$reset_error" = true ]; then
