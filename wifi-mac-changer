@@ -3,6 +3,8 @@
 # Enable verbose output for debugging
 set -x
 
+trap cleanup EXIT SIGINT SIGTERM
+
 # Detect Wi-Fi interface dynamically
 detect_wifi_interface() {
     WIFI_INTERFACE=$(networksetup -listallhardwareports | awk '/Wi-Fi/{getline; print $2}')
@@ -17,7 +19,7 @@ create_temp_dir() {
     TEMP_DIR=$(mktemp -d /tmp/wifi_mac_hostname.XXXXXX 2>/dev/null)
     if [ $? -ne 0 ]; then
         echo "Failed to create temp directory with mktemp. Trying alternative method." >&2
-        TEMP_DIR="/tmp/wifi_mac_hostname"
+        TEMP_DIR="/tmp/wifi_mac_hostname_$(date +%s)_$RANDOM"
         mkdir -p "$TEMP_DIR"
         if [ $? -ne 0 ]; then
             echo "Failed to create temp directory. Exiting." >&2
@@ -168,6 +170,10 @@ reset_config() {
 
 # Cleanup function
 cleanup() {
+    if [ -z "$TEMP_DIR" ]; then
+        echo "TEMP_DIR is not set. Nothing to clean up."
+        return
+    fi
     if [ -d "$TEMP_DIR" ]; then
         echo "Cleaning up temporary directory: $TEMP_DIR"
         rm -rf "$TEMP_DIR"
