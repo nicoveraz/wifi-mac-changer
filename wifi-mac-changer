@@ -1,9 +1,35 @@
 #!/bin/zsh
 
-# Enable verbose output for debugging
-set -x
+# Usage function
+usage() {
+    cat << EOF
+Usage: wifi-mac-changer [options]
 
-trap cleanup EXIT SIGINT SIGTERM
+This script allows you to change the Wi-Fi MAC address and hostname of your Mac.
+
+Options:
+  -n <hostname>   Set a new hostname
+  -m <MAC>        Set a specific MAC address (format: 00:11:22:33:44:55)
+  -r              Generate and set a random MAC address
+  -w <seconds>    Set wait time between operations (default: 2 seconds)
+  -R              Reset to original MAC address and hostname
+  -h              Display this help message
+
+Examples:
+  wifi-mac-changer -n "NewMacBook" -r
+    Change hostname to "NewMacBook" and set a random MAC address
+
+  wifi-mac-changer -m 00:11:22:33:44:55 -w 5
+    Set MAC address to 00:11:22:33:44:55 with a 5-second wait time
+
+  wifi-mac-changer -R
+    Reset to original MAC address and hostname
+
+Note: This script requires sudo privileges to make system changes.
+EOF
+    exit 1
+}
+
 
 # Detect Wi-Fi interface dynamically
 detect_wifi_interface() {
@@ -46,20 +72,18 @@ store_original_values() {
     cat "$CONFIG_FILE"  # Display the contents for debugging
 }
 
-# Main flow - detect Wi-Fi interface, create temp dir, and store original values
-detect_wifi_interface
-create_temp_dir
-store_original_values
-
 # Function to load original values
 load_original_values() {
+    # Try to find the most recent config file
+    CONFIG_FILE=$(find /tmp -name "wifi_mac_hostname.*/original_values" -type f -print0 | xargs -0 ls -t | head -n 1)
+    
     if [ -f "$CONFIG_FILE" ]; then
         echo "Loading original values from $CONFIG_FILE"
         source "$CONFIG_FILE"
         echo "Loaded values:"
         cat "$CONFIG_FILE"
     else
-        echo "Error: No stored original values found at $CONFIG_FILE. Unable to reset." >&2
+        echo "Error: No stored original values found. Unable to reset." >&2
         exit 1
     fi
 }
@@ -162,9 +186,6 @@ reset_config() {
     sleep 2
     sudo ipconfig set "$WIFI_INTERFACE" DHCP
 
-    # Cleanup temporary directory
-    cleanup
-    echo "Cleanup completed."
     echo "Reset completed. Original hostname: $ORIGINAL_HOSTNAME, Original MAC: $ORIGINAL_MAC"
 }
 
@@ -181,6 +202,9 @@ cleanup() {
         echo "No temporary directory found at $TEMP_DIR"
     fi
 }
+
+# Set trap for cleanup
+trap cleanup EXIT SIGINT SIGTERM
 
 # Parse command line arguments
 WAIT_TIME=2
@@ -226,10 +250,17 @@ while getopts ":n:m:rw:Rh" opt; do
 done
 shift $((OPTIND -1))
 
-# Reset configuration if requested
+# Main flow
+detect_wifi_interface
+
 if [ "$RESET" = true ]; then
+    # If resetting, load the original values without creating a new directory
     reset_config
     exit 0
+else
+    # If not resetting, create temp dir and store original values
+    create_temp_dir
+    store_original_values
 fi
 
 # Set hostname if provided
@@ -249,12 +280,11 @@ if [ ! -z "$TARGET_MAC_ADDRESS" ]; then
      # Turn on Wi-Fi and renew DHCP lease
     sudo networksetup -setairportpower "$WIFI_INTERFACE" on
     sleep $WAIT_TIME
-    
+
     # Change MAC address
     sudo ifconfig "$WIFI_INTERFACE" ether "${TARGET_MAC_ADDRESS}"
     sleep $WAIT_TIME
     
-   
     sudo ipconfig set "$WIFI_INTERFACE" DHCP
     
     echo "MAC address changed to ${TARGET_MAC_ADDRESS}"
