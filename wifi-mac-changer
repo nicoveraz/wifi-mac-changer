@@ -239,14 +239,16 @@ if [ ! -z "$TARGET_MAC_ADDRESS" ]; then
     # Turn off Wi-Fi
     sudo networksetup -setairportpower "$WIFI_INTERFACE" off
     sleep $WAIT_TIME
+
+     # Turn on Wi-Fi and renew DHCP lease
+    sudo networksetup -setairportpower "$WIFI_INTERFACE" on
+    sleep $WAIT_TIME
     
     # Change MAC address
     sudo ifconfig "$WIFI_INTERFACE" ether "${TARGET_MAC_ADDRESS}"
     sleep $WAIT_TIME
     
-    # Turn on Wi-Fi and renew DHCP lease
-    sudo networksetup -setairportpower "$WIFI_INTERFACE" on
-    sleep $WAIT_TIME
+   
     sudo ipconfig set "$WIFI_INTERFACE" DHCP
     
     echo "MAC address changed to ${TARGET_MAC_ADDRESS}"
