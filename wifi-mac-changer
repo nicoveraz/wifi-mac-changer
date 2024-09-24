@@ -4,12 +4,14 @@
 check_sudo() {
     if [ "$EUID" -ne 0 ]; then
         echo "This script requires sudo privileges to run."
-        if sudo -v; then
-            echo "Sudo access granted."
-        else
+        echo "Please enter your password to proceed."
+        sudo -v
+        if [ $? -ne 0 ]; then
             echo "Failed to obtain sudo privileges. Exiting."
             exit 1
         fi
+    else
+        echo "Script is running with sudo privileges."
     fi
 }
 
@@ -21,7 +23,8 @@ prompt_auto_join() {
     echo "1. Go to System Preferences > Network > Wi-Fi > Advanced"
     echo "2. Uncheck 'Auto-join' for all networks in the preferred networks list"
     echo ""
-    read -p "Have you turned off Auto-Join for all preferred networks? (y/n): " response
+    echo -n "Have you turned off Auto-Join for all preferred networks? (y/n): "
+    read response
     if [[ ! $response =~ ^[Yy]$ ]]; then
         echo "Please turn off Auto-Join and run the script again. Exiting."
         exit 1
