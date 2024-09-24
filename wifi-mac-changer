@@ -30,7 +30,6 @@ EOF
     exit 1
 }
 
-
 # Detect Wi-Fi interface dynamically
 detect_wifi_interface() {
     WIFI_INTERFACE=$(networksetup -listallhardwareports | awk '/Wi-Fi/{getline; print $2}')
@@ -40,50 +39,33 @@ detect_wifi_interface() {
     fi
 }
 
-# Function to create temporary directory
-create_temp_dir() {
-    TEMP_DIR=$(mktemp -d /tmp/wifi_mac_hostname.XXXXXX 2>/dev/null)
-    if [ $? -ne 0 ]; then
-        echo "Failed to create temp directory with mktemp. Trying alternative method." >&2
-        TEMP_DIR="/tmp/wifi_mac_hostname_$(date +%s)_$RANDOM"
-        mkdir -p "$TEMP_DIR"
-        if [ $? -ne 0 ]; then
-            echo "Failed to create temp directory. Exiting." >&2
-            exit 1
-        fi
+# Function to find or create the configuration file
+find_or_create_config() {
+    local config_dir="/tmp/wifi_mac_changer"
+    mkdir -p "$config_dir"
+    CONFIG_FILE="$config_dir/original_values"
+    
+    if [ ! -f "$CONFIG_FILE" ]; then
+        echo "Creating new configuration file: $CONFIG_FILE"
+        echo "ORIGINAL_MAC=$(ifconfig "$WIFI_INTERFACE" | awk '/ether/{print $2}')" > "$CONFIG_FILE"
+        echo "ORIGINAL_HOSTNAME=$(scutil --get ComputerName)" >> "$CONFIG_FILE"
+        echo "ORIGINAL_LOCALHOSTNAME=$(scutil --get LocalHostName)" >> "$CONFIG_FILE"
+        echo "ORIGINAL_HOSTNAME_SCUTIL=$(scutil --get HostName)" >> "$CONFIG_FILE"
+        chmod 600 "$CONFIG_FILE"  # Secure the file
+    else
+        echo "Using existing configuration file: $CONFIG_FILE"
     fi
-    echo "Temporary directory created: $TEMP_DIR"
-    CONFIG_FILE="$TEMP_DIR/original_values"
-}
-
-# Function to store original values
-store_original_values() {
-    echo "Storing original values..."
-    if [ ! -d "$TEMP_DIR" ]; then
-        echo "Error: Temporary directory does not exist. Creating it now." >&2
-        create_temp_dir
-    fi
-    echo "ORIGINAL_MAC=$(ifconfig "$WIFI_INTERFACE" | awk '/ether/{print $2}')" > "$CONFIG_FILE"
-    echo "ORIGINAL_HOSTNAME=$(scutil --get ComputerName)" >> "$CONFIG_FILE"
-    echo "ORIGINAL_LOCALHOSTNAME=$(scutil --get LocalHostName)" >> "$CONFIG_FILE"
-    echo "ORIGINAL_HOSTNAME_SCUTIL=$(scutil --get HostName)" >> "$CONFIG_FILE"
-    chmod 600 "$CONFIG_FILE"  # Secure the file
-    echo "Original values stored in $CONFIG_FILE"
-    cat "$CONFIG_FILE"  # Display the contents for debugging
 }
 
 # Function to load original values
 load_original_values() {
-    # Try to find the most recent config file
-    CONFIG_FILE=$(find /tmp -name "wifi_mac_hostname.*/original_values" -type f -print0 | xargs -0 ls -t | head -n 1)
-    
     if [ -f "$CONFIG_FILE" ]; then
         echo "Loading original values from $CONFIG_FILE"
         source "$CONFIG_FILE"
         echo "Loaded values:"
         cat "$CONFIG_FILE"
     else
-        echo "Error: No stored original values found. Unable to reset." >&2
+        echo "Error: No stored original values found. Unable to proceed." >&2
         exit 1
     fi
 }
@@ -191,20 +173,15 @@ reset_config() {
 
 # Cleanup function
 cleanup() {
-    if [ -z "$TEMP_DIR" ]; then
-        echo "TEMP_DIR is not set. Nothing to clean up."
-        return
-    fi
-    if [ -d "$TEMP_DIR" ]; then
-        echo "Cleaning up temporary directory: $TEMP_DIR"
-        rm -rf "$TEMP_DIR"
-    else
-        echo "No temporary directory found at $TEMP_DIR"
+    if [ "$RESET" = true ] && [ -f "$CONFIG_FILE" ]; then
+        echo "Cleaning up configuration file after reset: $CONFIG_FILE"
+        rm -f "$CONFIG_FILE"
+        rmdir "$(dirname "$CONFIG_FILE")" 2>/dev/null  # Remove directory if empty
     fi
 }
 
 # Set trap for cleanup
-trap cleanup EXIT SIGINT SIGTERM
+trap cleanup EXIT
 
 # Parse command line arguments
 WAIT_TIME=2
@@ -252,15 +229,23 @@ shift $((OPTIND -1))
 
 # Main flow
 detect_wifi_interface
+find_or_create_config
 
 if [ "$RESET" = true ]; then
-    # If resetting, load the original values without creating a new directory
+    # If resetting, load the original values and perform reset
+    load_original_values
     reset_config
+    echo "Reset completed. Cleaning up..."
+    cleanup
     exit 0
 else
-    # If not resetting, create temp dir and store original values
-    create_temp_dir
-    store_original_values
+    # If not resetting, load original values if they exist, otherwise store them
+    if [ ! -f "$CONFIG_FILE" ]; then
+        echo "Storing original values..."
+        find_or_create_config
+    else
+        load_original_values
+    fi
 fi
 
 # Set hostname if provided
@@ -277,7 +262,7 @@ if [ ! -z "$TARGET_MAC_ADDRESS" ]; then
     sudo networksetup -setairportpower "$WIFI_INTERFACE" off
     sleep $WAIT_TIME
 
-     # Turn on Wi-Fi and renew DHCP lease
+    # Turn on Wi-Fi and renew DHCP lease
     sudo networksetup -setairportpower "$WIFI_INTERFACE" on
     sleep $WAIT_TIME
 
@@ -289,5 +274,7 @@ if [ ! -z "$TARGET_MAC_ADDRESS" ]; then
     
     echo "MAC address changed to ${TARGET_MAC_ADDRESS}"
 fi
+
+echo "Configuration change completed. Original values preserved in: $CONFIG_FILE"
 
 exit 0
