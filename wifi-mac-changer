@@ -243,31 +243,23 @@ cleanup() {
 trap cleanup EXIT
 
 # Main flow
-check_sudo
-prompt_auto_join
-
-# Parse command line arguments
+# Parse command line arguments first
 WAIT_TIME=2
 RESET=false
 while getopts ":n:m:rw:Rh" opt; do
     case ${opt} in
+        h )
+            usage
+            exit 0
+            ;;
         n )
             HOSTNAME=$OPTARG
             ;;
         m )
-            TARGET_MAC_ADDRESS=$(sanitize_mac "$OPTARG")
-            if [ $? -ne 0 ]; then
-                exit 1
-            fi
+            TARGET_MAC_ADDRESS=$OPTARG
             ;;
         r )
-            RANDOM_MAC=$(generate_random_mac)
-            TARGET_MAC_ADDRESS=$(sanitize_mac "$RANDOM_MAC")
-            if [ $? -ne 0 ]; then
-                echo "Error generating random MAC address" >&2
-                exit 1
-            fi
-            echo "Generated random MAC address: $TARGET_MAC_ADDRESS"
+            RANDOM_MAC=true
             ;;
         w )
             WAIT_TIME=$OPTARG
@@ -275,39 +267,49 @@ while getopts ":n:m:rw:Rh" opt; do
         R )
             RESET=true
             ;;
-        h )
-            usage
-            ;;
         \? )
             echo "Invalid option: $OPTARG" 1>&2
             usage
+            exit 1
             ;;
         : )
             echo "Invalid option: $OPTARG requires an argument" 1>&2
             usage
+            exit 1
             ;;
     esac
 done
 shift $((OPTIND -1))
 
+# Check if no options were provided
+if [ $OPTIND -eq 1 ]; then
+    echo "No options were passed"
+    usage
+    exit 1
+fi
+
+# Now check for sudo and prompt for auto-join
+check_sudo
+prompt_auto_join
+
+# Rest of the script logic
 detect_wifi_interface
 find_or_create_config
 
 if [ "$RESET" = true ]; then
-    # If resetting, load the original values and perform reset
     load_original_values
     reset_config
     echo "Reset process completed."
     cleanup
     exit 0
+fi
+
+# Load or store original values
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "Storing original values..."
+    find_or_create_config
 else
-    # If not resetting, load original values if they exist, otherwise store them
-    if [ ! -f "$CONFIG_FILE" ]; then
-        echo "Storing original values..."
-        find_or_create_config
-    else
-        load_original_values
-    fi
+    load_original_values
 fi
 
 # Set hostname if provided
@@ -315,8 +317,16 @@ if [ ! -z "$HOSTNAME" ]; then
     set_hostname "$HOSTNAME"
 fi
 
-# Change MAC address and renew DHCP lease if a MAC address is provided
-if [ ! -z "$TARGET_MAC_ADDRESS" ]; then
+# Change MAC address and renew DHCP lease if a MAC address is provided or random MAC is requested
+if [ ! -z "$TARGET_MAC_ADDRESS" ] || [ "$RANDOM_MAC" = true ]; then
+    if [ "$RANDOM_MAC" = true ]; then
+        TARGET_MAC_ADDRESS=$(generate_random_mac)
+    fi
+    TARGET_MAC_ADDRESS=$(sanitize_mac "$TARGET_MAC_ADDRESS")
+    if [ $? -ne 0 ]; then
+        echo "Error: Invalid MAC address" >&2
+        exit 1
+    fi
     echo "Changing MAC address to ${TARGET_MAC_ADDRESS}..."
     echo "Wait time between steps: ${WAIT_TIME} seconds"
     
