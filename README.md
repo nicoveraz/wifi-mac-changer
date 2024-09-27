@@ -64,6 +64,7 @@ After running the script, you have to reconnect to the Wi-Fi network manually
 - `-n`: Set a temporary computer name for network connections
 - `-w`: Wait time in seconds between steps (default: 2)
 - `-R`: Reset to original MAC address and hostname
+- `-p`: Print current MAC address, hostname, and configuration file
 - `-h`: Display help message
 
 To see the usage information directly from the command line, you can run:

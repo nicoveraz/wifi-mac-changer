@@ -46,6 +46,7 @@ Options:
   -r              Generate and set a random MAC address
   -w <seconds>    Set wait time between operations (default: 2 seconds)
   -R              Reset to original MAC address and hostname
+  -p              Print current MAC address, hostname, and configuration file
   -h              Display this help message
 
 Examples:
@@ -86,17 +87,31 @@ find_or_create_config() {
         echo "ORIGINAL_HOSTNAME_SCUTIL=$(scutil --get HostName)" >> "$CONFIG_FILE"
         chmod 600 "$CONFIG_FILE"  # Secure the file
     else
-        echo "Using existing configuration file: $CONFIG_FILE"
+        echo "Config file found: $CONFIG_FILE"
+    fi
+}
+
+# Updated function to print current values and configuration file
+print_current_and_config() {
+    echo "Current values:"
+    echo "Current MAC address: $(ifconfig "$WIFI_INTERFACE" | awk '/ether/{print $2}')"
+    echo "Current Hostname: $(scutil --get ComputerName)"
+    echo "Current LocalHostName: $(scutil --get LocalHostName)"
+    echo "Current HostName: $(scutil --get HostName)"
+    echo ""
+    echo "Configuration file path: $CONFIG_FILE"
+    echo "Stored values:"
+    if [ -f "$CONFIG_FILE" ]; then
+        cat "$CONFIG_FILE"
+    else
+        echo "Configuration file not found: $CONFIG_FILE"
     fi
 }
 
 # Function to load original values
 load_original_values() {
     if [ -f "$CONFIG_FILE" ]; then
-        echo "Loading original values from $CONFIG_FILE"
         source "$CONFIG_FILE"
-        echo "Loaded values:"
-        cat "$CONFIG_FILE"
     else
         echo "Error: No stored original values found. Unable to proceed." >&2
         exit 1
@@ -183,6 +198,8 @@ sanitize_mac() {
 reset_config() {
     echo "Resetting to original configuration..."
     load_original_values
+    echo "Restoring values:"
+    cat "$CONFIG_FILE"
 
     local reset_error=false
 
@@ -246,7 +263,7 @@ trap cleanup EXIT
 # Parse command line arguments first
 WAIT_TIME=2
 RESET=false
-while getopts ":n:m:rw:Rh" opt; do
+while getopts ":n:m:rw:Rcph" opt; do
     case ${opt} in
         h )
             usage
@@ -266,6 +283,9 @@ while getopts ":n:m:rw:Rh" opt; do
             ;;
         R )
             RESET=true
+            ;;
+        p )
+            PRINT_VALUES=true
             ;;
         \? )
             echo "Invalid option: $OPTARG" 1>&2
@@ -316,6 +336,13 @@ fi
 if [ ! -z "$HOSTNAME" ]; then
     set_hostname "$HOSTNAME"
 fi
+
+# Handle the print values option
+if [ "$PRINT_VALUES" = true ]; then
+    print_current_and_config
+    exit 0
+fi
+
 
 # Change MAC address and renew DHCP lease if a MAC address is provided or random MAC is requested
 if [ ! -z "$TARGET_MAC_ADDRESS" ] || [ "$RANDOM_MAC" = true ]; then
