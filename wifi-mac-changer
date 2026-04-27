@@ -61,7 +61,6 @@ Examples:
 
 Note: This script requires sudo privileges to make system changes. Auto-Join should be turned off for all preferred Wi-Fi networks available
 EOF
-    exit 1
 }
 
 # Detect Wi-Fi interface dynamically
@@ -73,22 +72,30 @@ detect_wifi_interface() {
     fi
 }
 
+CONFIG_DIR="/var/db/wifi-mac-changer"
+CONFIG_FILE="$CONFIG_DIR/original_values"
+
 # Function to find or create the configuration file
 find_or_create_config() {
-    local config_dir="/tmp/wifi_mac_changer"
-    mkdir -p "$config_dir"
-    CONFIG_FILE="$config_dir/original_values"
-    
+    sudo mkdir -p "$CONFIG_DIR"
+
     if [ ! -f "$CONFIG_FILE" ]; then
         echo "Creating new configuration file: $CONFIG_FILE"
-        echo "ORIGINAL_MAC=$(ifconfig "$WIFI_INTERFACE" | awk '/ether/{print $2}')" > "$CONFIG_FILE"
-        echo "ORIGINAL_HOSTNAME=$(scutil --get ComputerName)" >> "$CONFIG_FILE"
-        echo "ORIGINAL_LOCALHOSTNAME=$(scutil --get LocalHostName)" >> "$CONFIG_FILE"
-        echo "ORIGINAL_HOSTNAME_SCUTIL=$(scutil --get HostName)" >> "$CONFIG_FILE"
-        chmod 600 "$CONFIG_FILE"  # Secure the file
+        sudo tee "$CONFIG_FILE" > /dev/null <<EOF
+ORIGINAL_MAC=$(ifconfig "$WIFI_INTERFACE" | awk '/ether/{print $2}')
+ORIGINAL_HOSTNAME=$(scutil --get ComputerName)
+ORIGINAL_LOCALHOSTNAME=$(scutil --get LocalHostName)
+ORIGINAL_HOSTNAME_SCUTIL=$(scutil --get HostName)
+EOF
+        sudo chmod 600 "$CONFIG_FILE"
     else
         echo "Config file found: $CONFIG_FILE"
     fi
+}
+
+# Read a single key from the config file (no shell-eval)
+read_config_value() {
+    sudo grep "^${1}=" "$CONFIG_FILE" 2>/dev/null | head -n1 | cut -d= -f2-
 }
 
 # Updated function to print current values and configuration file
@@ -102,7 +109,7 @@ print_current_and_config() {
     echo "Configuration file path: $CONFIG_FILE"
     echo "Stored values:"
     if [ -f "$CONFIG_FILE" ]; then
-        cat "$CONFIG_FILE"
+        sudo cat "$CONFIG_FILE"
     else
         echo "Configuration file not found: $CONFIG_FILE"
     fi
@@ -110,12 +117,14 @@ print_current_and_config() {
 
 # Function to load original values
 load_original_values() {
-    if [ -f "$CONFIG_FILE" ]; then
-        source "$CONFIG_FILE"
-    else
+    if [ ! -f "$CONFIG_FILE" ]; then
         echo "Error: No stored original values found. Unable to proceed." >&2
         exit 1
     fi
+    ORIGINAL_MAC=$(read_config_value ORIGINAL_MAC)
+    ORIGINAL_HOSTNAME=$(read_config_value ORIGINAL_HOSTNAME)
+    ORIGINAL_LOCALHOSTNAME=$(read_config_value ORIGINAL_LOCALHOSTNAME)
+    ORIGINAL_HOSTNAME_SCUTIL=$(read_config_value ORIGINAL_HOSTNAME_SCUTIL)
 }
 
 # Function to sanitize hostname
@@ -144,9 +153,9 @@ sanitize_hostname() {
 
 # Function to set hostname
 set_hostname() {
-    if [ ! -z "$1" ]; then
-        local new_hostname=$(sanitize_hostname "$1")
-        if [ $? -ne 0 ]; then
+    if [ -n "$1" ]; then
+        local new_hostname
+        if ! new_hostname=$(sanitize_hostname "$1"); then
             echo "Invalid hostname. Skipping hostname change."
             return 1
         fi
@@ -162,30 +171,27 @@ set_hostname() {
     fi
 }
 
+# Force first byte to unicast (clear bit 0) and locally-administered (set bit 1)
+normalize_first_byte() {
+    local first_byte_dec=$((16#$1))
+    first_byte_dec=$(( (first_byte_dec | 2) & 254 ))
+    printf "%02x" $first_byte_dec
+}
+
 # Function to generate a valid random MAC address
 generate_random_mac() {
     local mac=$(openssl rand -hex 6 | sed 's/\(..\)/\1:/g; s/.$//')
-    local first_byte=$(echo $mac | cut -d':' -f1)
-    local first_byte_dec=$((16#$first_byte))
-    
-    # Ensure it's unicast and globally unique
-    first_byte_dec=$((first_byte_dec & 254))
-    local new_first_byte=$(printf "%02x" $first_byte_dec)
+    local new_first_byte=$(normalize_first_byte "${mac%%:*}")
     echo "${new_first_byte}${mac:2}"
 }
 
 # Function to validate and sanitize MAC address
 sanitize_mac() {
     local mac=$1
-    mac=$(echo $mac | tr -cd '[:xdigit:]:-')
+    mac=$(echo "$mac" | tr -cd '[:xdigit:]:-')
     mac=${mac//-/:}
     if [[ $mac =~ ^([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}$ ]]; then
-        local first_byte=$(echo $mac | cut -d':' -f1)
-        local first_byte_dec=$((16#$first_byte))
-        if [ $((first_byte_dec % 2)) -ne 0 ]; then
-            first_byte_dec=$((first_byte_dec & 254))
-        fi
-        local new_first_byte=$(printf "%02x" $first_byte_dec)
+        local new_first_byte=$(normalize_first_byte "${mac%%:*}")
         echo "${new_first_byte}${mac:2}"
         return 0
     else
@@ -199,13 +205,13 @@ reset_config() {
     echo "Resetting to original configuration..."
     load_original_values
     echo "Restoring values:"
-    cat "$CONFIG_FILE"
+    sudo cat "$CONFIG_FILE"
 
     local reset_error=false
 
     sudo scutil --set ComputerName "$ORIGINAL_HOSTNAME"
     sudo scutil --set LocalHostName "$ORIGINAL_LOCALHOSTNAME"
-    if [ ! -z "$ORIGINAL_HOSTNAME_SCUTIL" ]; then
+    if [ -n "$ORIGINAL_HOSTNAME_SCUTIL" ]; then
         sudo scutil --set HostName "$ORIGINAL_HOSTNAME_SCUTIL"
     else
         sudo scutil --set HostName "$ORIGINAL_HOSTNAME"
@@ -249,8 +255,8 @@ reset_config() {
 cleanup() {
     if [ "$RESET" = true ] && [ -f "$CONFIG_FILE" ]; then
         echo "Cleaning up configuration file after successful reset: $CONFIG_FILE"
-        rm -f "$CONFIG_FILE"
-        rmdir "$(dirname "$CONFIG_FILE")" 2>/dev/null  # Remove directory if empty
+        sudo rm -f "$CONFIG_FILE"
+        sudo rmdir "$CONFIG_DIR" 2>/dev/null  # Remove directory if empty
     elif [ "$RESET" = true ]; then
         echo "Reset was requested but configuration file not found or reset encountered errors. No cleanup performed."
     fi
@@ -263,14 +269,14 @@ trap cleanup EXIT
 # Parse command line arguments first
 WAIT_TIME=2
 RESET=false
-while getopts ":n:m:rw:Rcph" opt; do
+while getopts ":n:m:rw:Rph" opt; do
     case ${opt} in
         h )
             usage
             exit 0
             ;;
         n )
-            HOSTNAME=$OPTARG
+            NEW_HOSTNAME=$OPTARG
             ;;
         m )
             TARGET_MAC_ADDRESS=$OPTARG
@@ -308,67 +314,54 @@ if [ $OPTIND -eq 1 ]; then
     exit 1
 fi
 
-# Now check for sudo and prompt for auto-join
+# All operations require sudo (read MAC, modify hostname, toggle Wi-Fi)
 check_sudo
-prompt_auto_join
-
-# Rest of the script logic
 detect_wifi_interface
 find_or_create_config
 
-if [ "$RESET" = true ]; then
-    load_original_values
-    reset_config
-    echo "Reset process completed."
-    cleanup
-    exit 0
-fi
-
-# Load or store original values
-if [ ! -f "$CONFIG_FILE" ]; then
-    echo "Storing original values..."
-    find_or_create_config
-else
-    load_original_values
-fi
-
-# Set hostname if provided
-if [ ! -z "$HOSTNAME" ]; then
-    set_hostname "$HOSTNAME"
-fi
-
-# Handle the print values option
+# Print mode: read-only, no auto-join prompt or further changes
 if [ "$PRINT_VALUES" = true ]; then
     print_current_and_config
     exit 0
 fi
 
+if [ "$RESET" = true ]; then
+    reset_config
+    echo "Reset process completed."
+    exit 0
+fi
+
+# Mutating operations require Auto-Join disabled to take effect cleanly
+prompt_auto_join
+
+load_original_values
+
+# Set hostname if provided
+if [ -n "$NEW_HOSTNAME" ]; then
+    set_hostname "$NEW_HOSTNAME"
+fi
 
 # Change MAC address and renew DHCP lease if a MAC address is provided or random MAC is requested
-if [ ! -z "$TARGET_MAC_ADDRESS" ] || [ "$RANDOM_MAC" = true ]; then
+if [ -n "$TARGET_MAC_ADDRESS" ] || [ "$RANDOM_MAC" = true ]; then
     if [ "$RANDOM_MAC" = true ]; then
         TARGET_MAC_ADDRESS=$(generate_random_mac)
     fi
-    TARGET_MAC_ADDRESS=$(sanitize_mac "$TARGET_MAC_ADDRESS")
-    if [ $? -ne 0 ]; then
+    if ! TARGET_MAC_ADDRESS=$(sanitize_mac "$TARGET_MAC_ADDRESS"); then
         echo "Error: Invalid MAC address" >&2
         exit 1
     fi
     echo "Changing MAC address to ${TARGET_MAC_ADDRESS}..."
     echo "Wait time between steps: ${WAIT_TIME} seconds"
-    
-    # Turn off Wi-Fi
+
     sudo networksetup -setairportpower "$WIFI_INTERFACE" off
-    sleep $WAIT_TIME
+    sleep "$WAIT_TIME"
 
-    # Turn on Wi-Fi and renew DHCP lease
     sudo networksetup -setairportpower "$WIFI_INTERFACE" on
-    sleep $WAIT_TIME
+    sleep "$WAIT_TIME"
 
-    # Change MAC address
     sudo ifconfig "$WIFI_INTERFACE" ether "${TARGET_MAC_ADDRESS}"
-    sleep $WAIT_TIME
-    
+    sleep "$WAIT_TIME"
+
     sudo ipconfig set "$WIFI_INTERFACE" DHCP
     
     echo "MAC address changed to ${TARGET_MAC_ADDRESS}"
