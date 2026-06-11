@@ -171,10 +171,12 @@ set_hostname() {
     fi
 }
 
-# Force first byte to unicast (clear bit 0) and locally-administered (set bit 1)
+# Force first byte to unicast (clear bit 0). Do NOT force the locally-administered
+# bit: some Apple Wi-Fi drivers silently reject locally-administered addresses, so
+# ifconfig returns success but the change reverts on re-association.
 normalize_first_byte() {
     local first_byte_dec=$((16#$1))
-    first_byte_dec=$(( (first_byte_dec | 2) & 254 ))
+    first_byte_dec=$(( first_byte_dec & 254 ))
     printf "%02x" $first_byte_dec
 }
 
@@ -362,8 +364,16 @@ if [ -n "$TARGET_MAC_ADDRESS" ] || [ "$RANDOM_MAC" = true ]; then
     sudo ifconfig "$WIFI_INTERFACE" ether "${TARGET_MAC_ADDRESS}"
     sleep "$WAIT_TIME"
 
+    # Verify the change actually took effect (macOS can silently revert it)
+    ACTUAL_MAC=$(ifconfig "$WIFI_INTERFACE" | awk '/ether/{print $2}')
+    if [ "${ACTUAL_MAC,,}" != "${TARGET_MAC_ADDRESS,,}" ]; then
+        echo "Error: MAC address did not change (wanted ${TARGET_MAC_ADDRESS}, got ${ACTUAL_MAC})." >&2
+        echo "The driver may have reverted it on re-association. Try disabling Auto-Join, or re-run." >&2
+        exit 1
+    fi
+
     sudo ipconfig set "$WIFI_INTERFACE" DHCP
-    
+
     echo "MAC address changed to ${TARGET_MAC_ADDRESS}"
 fi
 
