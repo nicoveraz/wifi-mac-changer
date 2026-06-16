@@ -125,6 +125,14 @@ load_original_values() {
     ORIGINAL_HOSTNAME=$(read_config_value ORIGINAL_HOSTNAME)
     ORIGINAL_LOCALHOSTNAME=$(read_config_value ORIGINAL_LOCALHOSTNAME)
     ORIGINAL_HOSTNAME_SCUTIL=$(read_config_value ORIGINAL_HOSTNAME_SCUTIL)
+
+    # A missing/empty original MAC means the config is corrupt; refuse to reset
+    # rather than restore a blank or wrong address.
+    if [ -z "$ORIGINAL_MAC" ]; then
+        echo "Error: Could not read a valid original MAC from $CONFIG_FILE." >&2
+        echo "Config may be corrupt. Reset aborted; file preserved." >&2
+        exit 1
+    fi
 }
 
 # Function to sanitize hostname
@@ -247,15 +255,15 @@ reset_config() {
 
     if [ "$reset_error" = true ]; then
         echo "Reset completed with errors. The configuration file will be preserved." >&2
-        RESET=false  # Prevent cleanup of the config file
     else
         echo "Reset completed successfully. Original hostname: $ORIGINAL_HOSTNAME, Original MAC: $ORIGINAL_MAC"
+        CLEANUP_CONFIG=true  # Only a clean reset should delete the stored originals
     fi
 }
 
 # Cleanup function
 cleanup() {
-    if [ "$RESET" = true ] && [ -f "$CONFIG_FILE" ]; then
+    if [ "$CLEANUP_CONFIG" = true ] && [ -f "$CONFIG_FILE" ]; then
         echo "Cleaning up configuration file after successful reset: $CONFIG_FILE"
         sudo rm -f "$CONFIG_FILE"
         sudo rmdir "$CONFIG_DIR" 2>/dev/null  # Remove directory if empty
@@ -271,6 +279,7 @@ trap cleanup EXIT
 # Parse command line arguments first
 WAIT_TIME=2
 RESET=false
+CLEANUP_CONFIG=false
 while getopts ":n:m:rw:Rph" opt; do
     case ${opt} in
         h )
@@ -366,7 +375,7 @@ if [ -n "$TARGET_MAC_ADDRESS" ] || [ "$RANDOM_MAC" = true ]; then
 
     # Verify the change actually took effect (macOS can silently revert it)
     ACTUAL_MAC=$(ifconfig "$WIFI_INTERFACE" | awk '/ether/{print $2}')
-    if [ "${ACTUAL_MAC,,}" != "${TARGET_MAC_ADDRESS,,}" ]; then
+    if [ "${(L)ACTUAL_MAC}" != "${(L)TARGET_MAC_ADDRESS}" ]; then
         echo "Error: MAC address did not change (wanted ${TARGET_MAC_ADDRESS}, got ${ACTUAL_MAC})." >&2
         echo "The driver may have reverted it on re-association. Try disabling Auto-Join, or re-run." >&2
         exit 1
