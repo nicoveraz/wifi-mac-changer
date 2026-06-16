@@ -11,11 +11,14 @@ This tool is provided as-is and is intended for educational purposes only. Use i
 - Change MAC address of Wi-Fi interface to a specified address or a random one
 - Change the computer name (NetBIOS name) for network connections
 - Input validation and MAC address sanitization
+- Post-change verification: the new MAC is read back and the run fails loudly
+  if the driver silently reverted it
 - Reset option to restore the original values without reboot
 
 ## Prerequisites
 
 - macOS operating system
+- `zsh` (the default shell on modern macOS)
 - Administrator privileges
 
 ## Installation
@@ -29,6 +32,13 @@ This tool is provided as-is and is intended for educational purposes only. Use i
 2. Install the tool:
    ```
    sudo make install
+   ```
+   This **copies** the script to `/usr/local/bin`. If you edit the script
+   afterwards, re-run `sudo make install` to update the installed copy.
+
+   For development, symlink it instead so local edits take effect immediately:
+   ```
+   sudo ln -sf "$PWD/wifi-mac-changer" /usr/local/bin/wifi-mac-changer
    ```
 
 ## Usage
@@ -73,10 +83,22 @@ To see the usage information directly from the command line, you can run:
 wifi-mac-changer -h
 ```
 
-## Reverting Changes
+### Notes on the MAC value
 
+The first byte of any MAC (specified or random) is normalized to a **unicast**
+address (lowest bit cleared). The locally-administered bit is intentionally
+**not** forced, because some Apple Wi-Fi drivers silently reject
+locally-administered addresses and revert the change.
+
+## Original values & reverting changes
+
+- The original MAC and hostnames are stored in
+  `/var/db/wifi-mac-changer/original_values` (root-owned, `0600`) so they
+  survive a reboot until you run `-R`.
 - The MAC address change is automatically reverted upon system reboot or when the script is run with the -R option
 - Hostname change will persist after reboot, to reset it to default value run with the -R option
+- A successful `-R` reset removes the stored config file; if the reset fails the
+  file is preserved so you can retry.
 
 ## Caution
 
